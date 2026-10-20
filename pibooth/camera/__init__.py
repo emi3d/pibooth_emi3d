@@ -3,7 +3,7 @@
 from pibooth.utils import LOGGER
 from pibooth.camera.rpi2 import Rpi2Camera, get_rpi2_camera_proxy
 from pibooth.camera.gphoto import GpCamera, get_gp_camera_proxy
-from pibooth.camera.opencv import CvCamera, get_cv_camera_proxy
+from pibooth.camera.opencv import AICvCamera, get_cv_camera_proxy
 from pibooth.camera.hybrid import HybridRpi2Camera, HybridCvCamera
 
 
@@ -15,7 +15,7 @@ def close_proxy(rpi2_cam_proxy, gp_cam_proxy, cv_cam_proxy):
     if gp_cam_proxy:
         GpCamera(gp_cam_proxy).quit()
     if cv_cam_proxy:
-        CvCamera(cv_cam_proxy).quit()
+        AICvCamera(cv_cam_proxy).quit()
 
 
 def find_camera():
@@ -47,6 +47,6 @@ def find_camera():
     elif cv_cam_proxy:
         LOGGER.info("Configuring OpenCV camera ...")
         close_proxy(rpi2_cam_proxy, gp_cam_proxy, None)
-        return CvCamera(cv_cam_proxy)
+        return AICvCamera(cv_cam_proxy)
 
     raise EnvironmentError("Neither Raspberry Pi nor GPhoto2 nor OpenCV camera detected")

@@ -107,7 +107,7 @@ class CvCamera(BaseCamera):
         if not ret:
             raise IOError("Can not get camera preview image")
         image = self._rotate_image(image, self.preview_rotation)
-
+        
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         # Crop to keep aspect ratio of the resolution
         height, width = image.shape[:2]
@@ -251,3 +251,18 @@ class CvCamera(BaseCamera):
         """
         if self._cam:
             self._cam.release()
+
+class AICvCamera(CvCamera):
+
+    def __init__(self, camera_proxy):
+        super(AICvCamera, self).__init__(camera_proxy)
+        self.detector = cv2.QRCodeDetector()
+
+    def detect_qr(self):
+        ret, image = self._cam.read()
+        if not ret:
+            raise IOError("Can not get camera preview image")
+        image = self._rotate_image(image, self.preview_rotation)
+        image = cv2.flip(image, 1)
+        value, _, _ = self.detector.detectAndDecode(image)
+        return value

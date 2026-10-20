@@ -274,6 +274,51 @@ def state_chosen_exit(cfg, app, win):
     :param win: graphical window instance
     """
 
+# --- Detect QR State ------------------------------------------------------------
+
+@hookspec
+def state_qr_enter(cfg, app, win):
+    """Actions performed when application enter in QR state.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    """
+
+@hookspec
+def state_qr_do(cfg, app, win, events):
+    """Actions performed when application is in QR state.
+
+    This hook is called in a loop until the application can switch
+    to the next state. A valid QR is detected and saved on app variable.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    :param events: pygame events generated since last call
+    """
+
+@hookspec(firstresult=True)
+def state_qr_validate(cfg, app, win, events):
+    """Return next state name if application can switch to it.
+    
+    If QR is detected and valid, switch to capture state.
+    Else if detected but invalid, show a QR is invalid alert.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    :param events: pygame events generated since last call
+    """
+
+@hookspec
+def state_qr_exit(cfg, app, win):
+    """Actions performed when application exit Capture state.
+    Pass for now.
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    """
 
 # --- Preview State ------------------------------------------------------------
 
