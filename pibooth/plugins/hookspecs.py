@@ -313,7 +313,54 @@ def state_qr_validate(cfg, app, win, events):
 
 @hookspec
 def state_qr_exit(cfg, app, win):
-    """Actions performed when application exit Capture state.
+    """Actions performed when application exit QR state.
+    Pass for now.
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    """
+
+# --- Confirm picture with AI State ------------------------------------------------------------
+
+@hookspec
+def state_liked_enter(cfg, app, win):
+    """Actions performed when application enter in liked state.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    """
+
+@hookspec
+def state_liked_do(cfg, app, win, events):
+    """Actions performed when application is in liked state.
+        Will loop to see if it can detect a face on the right or left of screen.
+        The mayority is a win for a yes or repeat picture.
+
+    This hook is called in a loop until the application can switch
+    to the next state. A valid QR is detected and saved on app variable.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    :param events: pygame events generated since last call
+    """
+
+@hookspec(firstresult=True)
+def state_liked_validate(cfg, app, win, events):
+    """Return next state name if application can switch to it.
+    
+    Print if yes, repeat photo if no.
+
+    :param cfg: application configuration
+    :param app: application instance
+    :param win: graphical window instance
+    :param events: pygame events generated since last call
+    """
+
+@hookspec
+def state_liked_exit(cfg, app, win):
+    """Actions performed when application exit Liked state.
     Pass for now.
     :param cfg: application configuration
     :param app: application instance

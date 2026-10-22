@@ -57,7 +57,6 @@ def multiline_text_to_surfaces(text, color, rect, align='center'):
         surfaces.append((surface, surface.get_rect(x=x, y=y)))
     return surfaces
 
-
 class Background(object):
 
     def __init__(self, image_name, color=(0, 0, 0), text_color=(255, 255, 255)):
@@ -679,3 +678,8 @@ class OopsBackground(Background):
 
     def __init__(self):
         Background.__init__(self, "oops")
+
+
+class EmptyBackground(Background):
+    def __init__(self):
+        Background.__init__(self, "")

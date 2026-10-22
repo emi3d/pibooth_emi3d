@@ -2,6 +2,7 @@
 
 import time
 import pygame
+import os.path as osp
 try:
     import cv2
     import numpy as np
@@ -12,12 +13,14 @@ except Exception as ex:
     OPENCV_ERROR = ex
 else:
     OPENCV_ERROR = None
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pibooth.pictures import sizing
 from pibooth.utils import PoolingTimer, LOGGER
 from pibooth.language import get_translated_text
 from pibooth.camera.base import BaseCamera
+from pibooth import fonts
 
+HERE = osp.abspath(osp.dirname(__file__))
 
 def get_cv_camera_proxy(port=None):
     """Return camera proxy if an OpenCV compatible camera is found
@@ -256,13 +259,134 @@ class AICvCamera(CvCamera):
 
     def __init__(self, camera_proxy):
         super(AICvCamera, self).__init__(camera_proxy)
-        self.detector = cv2.QRCodeDetector()
+        self.qr_detector = cv2.QRCodeDetector()
+        self.face_detector = cv2.CascadeClassifier(osp.join(HERE, 'models', 'haarcascade_frontalface_default.xml'))
 
     def detect_qr(self):
+        image = self._get_preview()
+        value, _, _ = self.qr_detector.detectAndDecode(image)
+        return value
+
+    def detect_like(self, window, detection_threshold=5, picture=None, avg_timer_time=0.25):
+        self._window = window
+        timer = PoolingTimer(detection_threshold)
+        avg_timer = PoolingTimer(avg_timer_time)
+        lasting_time = detection_threshold
+        curr_state = candidate = 'undefined'
+        yes_count = no_count =  idk_count = streak =  0
+        middle = self.get_rect().width // 2
+        win_rect = self._window.get_rect(absolute=True)
+        W, H = win_rect.width, win_rect.height
+        half = H // 2
+        base = Image.new('RGB', (W, H), (0, 0, 0))
+        if picture is not None:
+            pic = ImageOps.contain(picture.convert('RGB'), (W, H - half))
+            base.paste(pic, ((W - pic.width) // 2, half + (H - half - pic.height) // 2))
+
+        while not timer.is_timeout():
+            remaining = int(timer.remaining() + 1)
+            if self._overlay is None or remaining != lasting_time:
+                self._show_overlay(
+                    f"LEFT is NO{' '*16 + '|' + ' '*16}RIGHT is YES" 
+                    if curr_state == 'undefined' 
+                    else  f'confirming in: {remaining}',
+                    90,
+                )
+                self._overlay = self._segment_image(curr_state, middle)
+                lasting_time = remaining
+
+            image = np.array(self._get_preview_image())
+            faces = self.face_detector.detectMultiScale(
+                cv2.cvtColor(image, cv2.COLOR_RGB2GRAY), 
+                scaleFactor=1.1, 
+                minNeighbors=3, 
+                minSize=(80,80),
+            )
+
+            right = 0
+            for x, y, w, h in faces:
+                cv2.rectangle(image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                right += int(x + w / 2 > middle)
+            left = len(faces) - right
+            if right > left:
+                yes_count += 1
+            elif right < left:
+                no_count += 1
+            else:
+                idk_count += 1
+            streak += 1
+            
+            if avg_timer.is_timeout():
+                #current state is the highest count
+                yes_count /= streak
+                no_count /= streak
+                idk_count /= streak
+                curr_state = 'yes' if yes_count > no_count else 'no' if yes_count < no_count else 'undefined'
+                yes_count = no_count = idk_count = 0
+                streak = 0
+
+                if curr_state != candidate:
+                    lasting_time =  None
+                    timer.reset()
+                    timer.start()
+                    
+                elif curr_state == 'undefined':
+                    timer.reset()
+                    timer.start()
+
+                avg_timer.reset()
+                avg_timer.start()
+                    
+                candidate = curr_state
+            updated_rect = self._window.show_image(self.compose_picture(base, Image.fromarray(image), W, half))
+            pygame.event.pump()
+            if updated_rect:
+                pygame.display.update(updated_rect)
+
+        self._overlay = None
+        self._show_overlay(f'{curr_state} detected', 80)
+        self._window.show_image(self._get_preview_image())
+        time.sleep(0.8)
+        self.stop_preview()
+        return curr_state
+
+    def compose_picture(self, base, preview, W, half):
+        small = ImageOps.contain(preview.convert('RGB'), (W, half))
+        frame = base.copy()
+        frame.paste(small, ((W - small.width) // 2, (half - small.height) // 2))
+        return frame
+
+    def show_text_overlay(self, window, text, position='midbottom', flip=True):
+            self._window = window
+            self.preview_flip = flip
+            image = self._get_preview_image()
+            self._draw_text(image, text, position)
+            self._window.show_image(image)
+
+    def _draw_text(self, image, text, position='center', size=0.14, margin=20):
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.truetype(fonts.get_filename(fonts.CURRENT), int(image.height * size))
+        l, t, r, b = draw.textbbox((0, 0), text, font=font)
+        box = pygame.Rect(0, 0, r - l, b - t)
+        area = pygame.Rect(0, 0, *image.size).inflate(-2 * margin, -2 * margin)
+        setattr(box, position, getattr(area, position))
+        draw.text((box.x - l, box.y - t), text, font=font, fill=(255, 255, 255),
+                stroke_width=3, stroke_fill=(0, 0, 0))
+
+    def _get_preview(self):
         ret, image = self._cam.read()
         if not ret:
             raise IOError("Can not get camera preview image")
         image = self._rotate_image(image, self.preview_rotation)
         image = cv2.flip(image, 1)
-        value, _, _ = self.detector.detectAndDecode(image)
-        return value
+        return image
+
+    def _segment_image(self, state, middle=None, thickness=4):
+        overlay = self._overlay
+        h, w = overlay.shape[:2]
+        middle = w // 2 if middle is None else middle
+        if state in ('yes', 'no'):
+            x0, x1 = (middle, w - 1) if state == 'yes' else (0, middle)
+            cv2.rectangle(overlay, (x0, 0), (x1, h - 1), (255, 0, 0), thickness * 2)
+        cv2.line(overlay, (middle, 0), (middle, h), (255, 255, 255), thickness)
+        return overlay
