@@ -3,7 +3,7 @@
 import requests
 import time
 import pygame
-from pathlib import Path
+import io
 import mimetypes
 import os
 
@@ -19,7 +19,7 @@ __version__ = "0.0.1"
 @pibooth.hookimpl
 def pibooth_configure(cfg):
     cfg.add_option('CONTROLS', 'DB_API_KEY', '', "Database API KEY")
-    cfg.add_option('CONTROLS', 'DB_URL', '', "Database API KEY")
+    cfg.add_option('CONTROLS', 'DB_URL', '', "Database URL KEY")
                    
 @pibooth.hookimpl
 def pibooth_startup(cfg, app):
@@ -29,6 +29,7 @@ def pibooth_startup(cfg, app):
     app._machine.add_state('qr')
     app._machine.add_state('liked')
     app.liked_photo = ''
+    app.match_photo_url = ''
     app.session = requests.Session()
     app.session.headers["Authorization"] = f"Bearer {cfg.get('CONTROLS', 'DB_API_KEY')}"
 
@@ -98,12 +99,13 @@ def state_liked_do(cfg, app, win, events):
 def state_liked_validate(cfg, app, win, events):
     app.camera.stop_preview()
     if (like := app.liked_photo) in ('no', 'yes'):
-        if like == 'yes' and save_to_db(app.qr_data, app.previous_picture, app):
+        if like == 'yes' and save_to_db(app.qr_data, app.previous_picture_file, app):
             img = app.previous_picture.copy()
             win._update_background(background.EmptyBackground())
             app.camera._draw_text(img, 'Foto aceptada, guardando...', 'midbottom')
             win._update_foreground(img, win.FULLSCREEN)
             app.qr_data = ''
+            app.match_photo_url = ''
             timer = PoolingTimer(8)
             pygame.display.update()
             while not timer.is_timeout():
@@ -132,23 +134,33 @@ def validate_qr(code, app):
             app.db_url, 
             timeout=10,
             json={"code": code, "action": 'lookup'},
-        )
-        return r.json().get("canPrint") is True
+        ).json()
+
+        if can_print :=  r.get("canPrint") is True:
+            if not r.get('usePlaceholder'):
+                app.match_photo_url = r.get('matchPhotoUrl')
+        return can_print
     except Exception:
             return False
     
-def save_to_db(code, img_path, app):
-    p = Path(img_path)
-    mime, _ = mimetypes.guess_type(p.name)
+def save_to_db(code, image_path, app):
+    ext = image_path.rsplit(".", 1)[-1].lower()
+    mime = f"image/{ext}"
+    filename = f"{code}.{ext}"
     try:
-        with p.open("rb") as f:
+        with open(image_path, "rb") as f:
             r = app.session.post(
-                app.db_url, 
+                app.db_url,
                 timeout=30,
                 data={"code": code, "action": "mark_printed"},
-                files={"photo": (p.name, f, mime)},
+                files={"photo": (filename, f, mime)},
             )
         body = r.json()
-        return body.get("markedPrinted") is True and body.get("photoStored") is True
+        if success := body.get("markedPrinted") is True and body.get("photoStored") is True:
+            after_save_to_db(app.qr_data, image_path, app.match_photo_url)
+        return success
     except Exception:
         return False
+
+def after_save_to_db(code, image_path, match_image_url):
+    return True
